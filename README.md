@@ -12,3 +12,9 @@ V. 0.2
 - Imported OpenCV-Python library for Image Processing
 - Just applied basic image processing techniques
 - Model can now garner more text from the image
+
+V. 0.3
+- Imported "re" library
+- Implemented soft image processing techniques
+- Added Category Detection feature
+- Provided context for each category using keywords
