@@ -43,8 +43,8 @@ def upload_file():
         # Classify document based on the extracted text
         document_type = classify_document(extracted_text)
 
-        # Return JSON with the document type
-        return jsonify({"document_type": document_type})
+        # Return JSON with the document type and extracted text
+        return jsonify({"document_type": document_type, "extracted_text": extracted_text})
 
 def softer_preprocess_image(image_path):
     # Load the image using OpenCV
@@ -60,16 +60,23 @@ def softer_preprocess_image(image_path):
     resized_image = cv2.resize(gray_image, (width, height))
 
     # Apply slight sharpening (reduce intensity)
-    kernel = np.array([[0, -0.5, 0],
-                       [-0.5, 3, -0.5],
-                       [0, -0.5, 0]])
+    kernel = np.array([[0, -0.2, 0],
+                       [-0.2, 2.0, -0.2],
+                       [0, -0.2, 0]])
     sharpened_image = cv2.filter2D(resized_image, -1, kernel)
 
-    # Apply basic thresholding
-    _, threshold_image = cv2.threshold(sharpened_image, 130, 255, cv2.THRESH_BINARY)
+    # Apply Gaussian blur to reduce noise (slightly larger kernel)
+    blurred_image = cv2.GaussianBlur(sharpened_image, (5, 5), 0)
+
+    # Apply adaptive thresholding (tune parameters)
+    threshold_image = cv2.adaptiveThreshold(blurred_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+
+    # Apply morphological opening (erosion followed by dilation) to remove small noise
+    kernel = np.ones((2, 2), np.uint8)
+    opened_image = cv2.morphologyEx(threshold_image, cv2.MORPH_OPEN, kernel)
 
     # Convert back to PIL Image for Tesseract
-    processed_pil_image = Image.fromarray(threshold_image)
+    processed_pil_image = Image.fromarray(opened_image)
 
     return processed_pil_image
 
