@@ -1,6 +1,6 @@
 #pyinstaller app.spec
 
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, request, jsonify
 import pytesseract
 from PIL import Image
 import cv2
@@ -20,20 +20,16 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-@app.route('/')
-def index():
-    return render_template('index.html')
-
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
-        return 'No file part'
-    
+        return jsonify({"error": "No file part"}), 400
+
     file = request.files['file']
-    
+
     if file.filename == '':
-        return 'No selected file'
-    
+        return jsonify({"error": "No selected file"}), 400
+
     if file:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(file_path)
@@ -47,7 +43,8 @@ def upload_file():
         # Classify document based on the extracted text
         document_type = classify_document(extracted_text)
 
-        return f"<h1>Document Type: {document_type}</h1><p>{extracted_text}</p>"
+        # Return JSON with the document type
+        return jsonify({"document_type": document_type})
 
 def softer_preprocess_image(image_path):
     # Load the image using OpenCV
@@ -101,7 +98,6 @@ def classify_document(text):
                 match_counts[document_type] += 1
 
     # Determine the document type based on the highest count of keyword matches
-    # If multiple types have the same count, the first one with that count is returned
     detected_type = max(match_counts, key=match_counts.get)
 
     # Additional check if no keywords were detected (handling 2x2 ID Picture)
