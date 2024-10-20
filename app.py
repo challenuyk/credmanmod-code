@@ -161,7 +161,8 @@ def classify_document(text):
     patterns = {
         "Birth Certificate": [r"\bbirth certificate\b", r"\bcertificate of live birth\b"],
         "Enrollment Form": [r"\benrollment form\b", r"\bbasic education\b"],
-        "Report Card": [r"\bform-137\b", r"\bpermanent record\b"]
+        "Report Card": [r"\bform-137\b", r"\bpermanent record\b", r"\breport card\b", 
+        r"\blearning areas\b", r"\bdepartment of education\b", r"\blearning progress\b", r"\breport\b"]
     }
 
     # Dictionary to store count of matches for each type
