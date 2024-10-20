@@ -1,6 +1,6 @@
 #pyinstaller app.spec
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 import pytesseract
 from PIL import Image
 import cv2
@@ -34,11 +34,12 @@ def upload_file():
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(file_path)
 
-        # Apply image preprocessing
-        processed_image = softer_preprocess_image(file_path)
+        # Apply improved preprocessing
+        processed_image_path, processed_image_no_boxes_path = improved_preprocess_image(file_path)
 
-        # Use pytesseract to extract text
-        extracted_text = pytesseract.image_to_string(processed_image)
+        # Use pytesseract to extract text from the image without bounding boxes
+        processed_image_no_boxes = Image.open(processed_image_no_boxes_path)
+        extracted_text = pytesseract.image_to_string(processed_image_no_boxes)
 
         # Classify document based on the extracted text
         document_type = classify_document(extracted_text)
@@ -46,39 +47,39 @@ def upload_file():
         # Return JSON with the document type and extracted text
         return jsonify({"document_type": document_type, "extracted_text": extracted_text})
 
-def softer_preprocess_image(image_path):
+def improved_preprocess_image(image_path):
     # Load the image using OpenCV
     image = cv2.imread(image_path)
 
     # Convert to grayscale
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # Resize the image (less aggressive)
-    scale_percent = 120  # Increase size by 120%
-    width = int(gray_image.shape[1] * scale_percent / 100)
-    height = int(gray_image.shape[0] * scale_percent / 100)
-    resized_image = cv2.resize(gray_image, (width, height))
+    # Apply bilateral filter (reduce noise while preserving edges)
+    bilateral_filtered_image = cv2.bilateralFilter(gray_image, 9, 75, 75)
 
-    # Apply slight sharpening (reduce intensity)
-    kernel = np.array([[0, -0.2, 0],
-                       [-0.2, 2.0, -0.2],
-                       [0, -0.2, 0]])
-    sharpened_image = cv2.filter2D(resized_image, -1, kernel)
+    # Try Otsu's thresholding
+    _, threshold_image = cv2.threshold(bilateral_filtered_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # Apply Gaussian blur to reduce noise (slightly larger kernel)
-    blurred_image = cv2.GaussianBlur(sharpened_image, (5, 5), 0)
-
-    # Apply adaptive thresholding (tune parameters)
-    threshold_image = cv2.adaptiveThreshold(blurred_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-
-    # Apply morphological opening (erosion followed by dilation) to remove small noise
+    # Apply morphological operations to remove small noise and emphasize text
     kernel = np.ones((2, 2), np.uint8)
-    opened_image = cv2.morphologyEx(threshold_image, cv2.MORPH_OPEN, kernel)
+    morph_image = cv2.morphologyEx(threshold_image, cv2.MORPH_CLOSE, kernel)
 
-    # Convert back to PIL Image for Tesseract
-    processed_pil_image = Image.fromarray(opened_image)
+    # Save the processed image without bounding boxes for text extraction
+    processed_image_no_boxes_path = os.path.join(app.config['UPLOAD_FOLDER'], 'processed_image_no_boxes.png')
+    cv2.imwrite(processed_image_no_boxes_path, morph_image)
 
-    return processed_pil_image
+    # Detect words and draw bounding boxes
+    d = pytesseract.image_to_data(morph_image, output_type=pytesseract.Output.DICT)
+    n_boxes = len(d['level'])
+    for i in range(n_boxes):
+        (x, y, w, h) = (d['left'][i], d['top'][i], d['width'][i], d['height'][i])
+        cv2.rectangle(morph_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+    # Save the processed image with bounding boxes for visualization
+    processed_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'processed_image_with_boxes.png')
+    cv2.imwrite(processed_image_path, morph_image)
+
+    return processed_image_path, processed_image_no_boxes_path
 
 def classify_document(text):
     # Convert text to lowercase for easier comparison
@@ -109,7 +110,7 @@ def classify_document(text):
 
     # Additional check if no keywords were detected (handling 2x2 ID Picture)
     if sum(match_counts.values()) == 0 and len(text.strip()) == 0:
-        return "2x2 ID Picture"
+        return "1x1 ID Picture"
     elif sum(match_counts.values()) == 0:
         return "Unknown Document"
     else:
